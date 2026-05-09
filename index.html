@@ -2,7 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sleep Tracker</title>
+
+<!-- PWA: home screen icon, fullscreen launch, theme -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sleep Tracker">
 <style>
   :root {
     --bg: #0a0a0a;
@@ -643,7 +653,8 @@ render();
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getAuth, GoogleAuthProvider,
-  signInWithPopup, signOut, onAuthStateChanged
+  signInWithPopup, signInWithRedirect, getRedirectResult,
+  signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   initializeFirestore,
@@ -680,17 +691,33 @@ function setStatus(text, mode) {
   statusEl.innerHTML = `<span class="dot"></span>${text}`;
 }
 
+// Standalone (home-screen) mode and many mobile contexts block popups,
+// so prefer redirect there. Popups give a nicer UX on desktop browsers.
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+  || window.navigator.standalone === true;
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const useRedirect = isStandalone || isMobile;
+
 btnEl.addEventListener('click', async () => {
   if (currentUser) {
     await signOut(auth);
-  } else {
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (e) {
-      console.error(e);
-      alert('Sign-in failed: ' + e.message);
-    }
+    return;
   }
+  try {
+    if (useRedirect) {
+      await signInWithRedirect(auth, provider);
+    } else {
+      await signInWithPopup(auth, provider);
+    }
+  } catch (e) {
+    console.error(e);
+    alert('Sign-in failed: ' + e.message);
+  }
+});
+
+// On page load after a redirect-based sign-in, surface any errors.
+getRedirectResult(auth).catch((e) => {
+  console.error('redirect sign-in error', e);
 });
 
 function userDocRef(uid) {
