@@ -691,12 +691,12 @@ function setStatus(text, mode) {
   statusEl.innerHTML = `<span class="dot"></span>${text}`;
 }
 
-// Standalone (home-screen) mode and many mobile contexts block popups,
-// so prefer redirect there. Popups give a nicer UX on desktop browsers.
+// Use popup for sign-in unless the app is launched fullscreen from the home
+// screen (where popups are blocked). Redirect-based sign-in is unreliable on
+// iOS Safari due to ITP cross-site cookie restrictions on firebaseapp.com.
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches
   || window.navigator.standalone === true;
-const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-const useRedirect = isStandalone || isMobile;
+const useRedirect = isStandalone;
 
 btnEl.addEventListener('click', async () => {
   if (currentUser) {
