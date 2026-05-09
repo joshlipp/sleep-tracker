@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sleep Tracker</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #141414;
+    --panel-2: #1c1c1c;
+    --weekend: #1a2340;
+    --weekend-2: #233056;
+    --border: #2a2a2a;
+    --text: #e6e6e6;
+    --muted: #8a8a8a;
+    --accent: #00d632;
+    --accent-2: #6aa6ff;
+    --danger: #ff5252;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+    min-height: 100vh;
+  }
+  h1 {
+    margin: 0 0 4px 0;
+    font-size: 28px;
+    font-weight: 600;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  button:hover { background: #262626; border-color: #3a3a3a; }
+  button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { background: #00b82c; }
+  button.danger { color: var(--danger); }
+  button.danger:hover { background: #2a1414; }
+
+  .cumulative {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+  }
+  .cumulative h2 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .stat {
+    background: var(--panel-2);
+    padding: 12px 14px;
+    border-radius: 8px;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-value.empty { color: var(--muted); font-weight: 400; font-size: 16px; }
+
+  .week {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .week-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .week-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .week-title .range {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 14px;
+    margin-left: 8px;
+  }
+  .week-actions { display: flex; gap: 6px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th {
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr.weekend { background: var(--weekend); }
+  tr.weekend td { border-color: var(--weekend-2); }
+
+  .day-label { font-weight: 500; min-width: 130px; }
+  .day-label .date { color: var(--muted); font-weight: 400; font-size: 12px; display: block; }
+
+  input[type="time"] {
+    background: #0d0d0d;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    color-scheme: dark;
+    width: 110px;
+  }
+  tr.weekend input[type="time"] { background: #0f1530; }
+  input[type="time"]:focus { outline: none; border-color: var(--accent-2); }
+
+  .weekend-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .weekend-toggle input { accent-color: var(--accent-2); }
+
+  .week-stats {
+    padding: 14px 20px;
+    background: var(--panel-2);
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+  }
+  .week-stats .stat { background: #0d0d0d; }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+  }
+
+  .footer-actions {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+    margin-bottom: 32px;
+  }
+
+  .auth-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+  .auth-status { color: var(--muted); }
+  .auth-status .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: var(--muted);
+    vertical-align: middle;
+  }
+  .auth-status.synced .dot { background: var(--accent); }
+  .auth-status.offline .dot { background: #ffae42; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Sleep Tracker</h1>
+  <div class="subtitle">Bedtimes, wake-ups, and weekly averages</div>
+
+  <div class="auth-bar">
+    <span id="authStatus" class="auth-status"><span class="dot"></span>Local only — not synced</span>
+    <button id="authBtn">Sign in with Google</button>
+  </div>
+
+  <div class="toolbar">
+    <button class="primary" onclick="addCurrentWeek()">+ Current week</button>
+    <button onclick="addPreviousWeek()">+ Previous week</button>
+    <button onclick="addNextWeek()">+ Next week</button>
+    <button onclick="exportData()">Export</button>
+    <button onclick="importData()">Import</button>
+  </div>
+
+  <div class="cumulative" id="cumulative">
+    <h2>Cumulative averages (all weeks)</h2>
+    <div class="stats-grid" id="cumulativeStats"></div>
+  </div>
+
+  <div id="weeks"></div>
+
+  <div class="footer-actions">
+    <button onclick="addPreviousWeek()">+ Add previous week</button>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'sleepTrackerData';
+// Week is keyed by its Sunday. entries[0] = Sun→Mon, entries[6] = Sat→Sun.
+// Display rule: if entries[0] is marked weekend, it appears at the bottom of
+// the *previous* week's display (grouped with Fri→Sat and Sat→Sun).
+const DAY_PAIRS = [
+  { label: 'Sun → Mon' },
+  { label: 'Mon → Tue' },
+  { label: 'Tue → Wed' },
+  { label: 'Wed → Thu' },
+  { label: 'Thu → Fri' },
+  { label: 'Fri → Sat' },
+  { label: 'Sat → Sun' },
+];
+const DEFAULT_WEEKEND = [false, false, false, false, false, true, true];
+
+// ---------- Data ----------
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { weeks: {} };
+    const data = JSON.parse(raw);
+    if (!data.weeks) data.weeks = {};
+    return data;
+  } catch (e) {
+    console.error('load failed', e);
+    return { weeks: {} };
+  }
+}
+function saveData(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  // Notify cloud sync layer (defined in module script below) if available.
+  if (typeof window.cloudPush === 'function') window.cloudPush();
+}
+let DATA = loadData();
+window.DATA = DATA; // expose to module script
+
+// Called by the cloud sync layer when remote data arrives.
+window.applyRemoteData = function(remote) {
+  if (!remote || !remote.weeks) return;
+  // Skip if identical to current state — avoids needless re-render flicker.
+  if (JSON.stringify(remote) === JSON.stringify(DATA)) return;
+  DATA = remote;
+  window.DATA = DATA;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+  render();
+};
+
+// ---------- Date helpers ----------
+// Week is keyed by the Sunday that starts it (the night of Sun→Mon is row 0).
+function getSundayOf(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = d.getDay(); // 0=Sun, 6=Sat
+  d.setDate(d.getDate() - day);
+  return d;
+}
+function fmtDateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function parseDateKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function addDays(d, n) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function fmtDateShort(d) {
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function fmtDateLong(d) {
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// ---------- Week entries ----------
+function ensureWeek(key) {
+  if (!DATA.weeks[key]) {
+    DATA.weeks[key] = {
+      entries: DAY_PAIRS.map((_, i) => ({
+        bedtime: '',
+        wakeup: '',
+        isWeekend: DEFAULT_WEEKEND[i],
+      })),
+    };
+    saveData(DATA);
+  }
+  // Backfill missing fields
+  const w = DATA.weeks[key];
+  if (!w.entries || w.entries.length !== 7) {
+    w.entries = DAY_PAIRS.map((_, i) => ({
+      bedtime: '', wakeup: '', isWeekend: DEFAULT_WEEKEND[i]
+    }));
+  }
+  return w;
+}
+
+function addCurrentWeek() {
+  const sun = getSundayOf(new Date());
+  const key = fmtDateKey(sun);
+  ensureWeek(key);
+  render();
+}
+function addPreviousWeek() {
+  const keys = Object.keys(DATA.weeks).sort();
+  let baseSun;
+  if (keys.length === 0) baseSun = getSundayOf(new Date());
+  else baseSun = parseDateKey(keys[0]);
+  const prev = addDays(baseSun, -7);
+  ensureWeek(fmtDateKey(prev));
+  render();
+}
+function addNextWeek() {
+  const keys = Object.keys(DATA.weeks).sort();
+  let baseSun;
+  if (keys.length === 0) baseSun = getSundayOf(new Date());
+  else baseSun = parseDateKey(keys[keys.length - 1]);
+  const next = addDays(baseSun, 7);
+  ensureWeek(fmtDateKey(next));
+  render();
+}
+function deleteWeek(key) {
+  if (!confirm(`Delete week of ${fmtDateLong(parseDateKey(key))}? This cannot be undone.`)) return;
+  delete DATA.weeks[key];
+  saveData(DATA);
+  render();
+}
+
+// ---------- Time math ----------
+// Bedtime: minutes since 18:00 (6pm). Hours 0–11 are treated as the next day.
+// 18:00 → 0, 23:30 → 330, 00:30 → 390, 02:00 → 480.
+function bedtimeToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  const adj = h < 12 ? h + 24 : h;
+  return adj * 60 + m - 18 * 60;
+}
+function minutesToBedtime(min) {
+  if (min == null || isNaN(min)) return null;
+  // Round to nearest minute
+  let total = Math.round(min) + 18 * 60;
+  total = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+function wakeupToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+function minutesToWakeup(min) {
+  if (min == null || isNaN(min)) return null;
+  let total = Math.round(min);
+  total = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// Average a list of times. Returns formatted string or null.
+function avgBedtime(times) {
+  const mins = times.map(bedtimeToMinutes).filter(v => v != null);
+  if (mins.length === 0) return null;
+  const avg = mins.reduce((a, b) => a + b, 0) / mins.length;
+  return minutesToBedtime(avg);
+}
+function avgWakeup(times) {
+  const mins = times.map(wakeupToMinutes).filter(v => v != null);
+  if (mins.length === 0) return null;
+  const avg = mins.reduce((a, b) => a + b, 0) / mins.length;
+  return minutesToWakeup(avg);
+}
+
+// The set of (weekKey, idx) entries displayed under week `key`, applying the
+// rule that Sun→Mon (entries[0]) belongs to the *previous* week when marked
+// weekend. Returns rows in display order (top to bottom).
+function getDisplayRows(key) {
+  const sun = parseDateKey(key);
+  const week = DATA.weeks[key];
+  const prevKey = fmtDateKey(addDays(sun, -7));
+  const nextKey = fmtDateKey(addDays(sun, 7));
+  const prevExists = !!DATA.weeks[prevKey];
+  const nextWeek = DATA.weeks[nextKey];
+
+  const rows = [];
+  // Top: own entries[0] unless it's been "donated" to the previous week.
+  // (If no previous week exists yet, keep it here so data isn't hidden.)
+  if (!week.entries[0].isWeekend || !prevExists) {
+    rows.push({ weekKey: key, idx: 0 });
+  }
+  // Middle: entries[1..6] always belong here.
+  for (let i = 1; i <= 6; i++) rows.push({ weekKey: key, idx: i });
+  // Bottom: next week's entries[0] if marked weekend → it joins this weekend.
+  if (nextWeek && nextWeek.entries[0].isWeekend) {
+    rows.push({ weekKey: nextKey, idx: 0 });
+  }
+  return rows;
+}
+
+function computeWeekStats(key) {
+  const rows = getDisplayRows(key);
+  const entries = rows.map(r => DATA.weeks[r.weekKey].entries[r.idx]);
+  const work = entries.filter(e => !e.isWeekend);
+  const wknd = entries.filter(e => e.isWeekend);
+  return {
+    workBed: avgBedtime(work.map(e => e.bedtime)),
+    workWake: avgWakeup(work.map(e => e.wakeup)),
+    weekendBed: avgBedtime(wknd.map(e => e.bedtime)),
+    weekendWake: avgWakeup(wknd.map(e => e.wakeup)),
+  };
+}
+
+function computeCumulativeStats() {
+  const allWork = [];
+  const allWknd = [];
+  Object.values(DATA.weeks).forEach(w => {
+    w.entries.forEach(e => {
+      (e.isWeekend ? allWknd : allWork).push(e);
+    });
+  });
+  return {
+    workBed: avgBedtime(allWork.map(e => e.bedtime)),
+    workWake: avgWakeup(allWork.map(e => e.wakeup)),
+    weekendBed: avgBedtime(allWknd.map(e => e.bedtime)),
+    weekendWake: avgWakeup(allWknd.map(e => e.wakeup)),
+  };
+}
+
+// ---------- Rendering ----------
+function statHTML(label, value) {
+  const v = value || '—';
+  const cls = value ? 'stat-value' : 'stat-value empty';
+  return `<div class="stat"><div class="stat-label">${label}</div><div class="${cls}">${v}</div></div>`;
+}
+
+function render() {
+  // Cumulative stats
+  const cum = computeCumulativeStats();
+  document.getElementById('cumulativeStats').innerHTML = [
+    statHTML('Avg work bedtime', cum.workBed),
+    statHTML('Avg work wake-up', cum.workWake),
+    statHTML('Avg weekend bedtime', cum.weekendBed),
+    statHTML('Avg weekend wake-up', cum.weekendWake),
+  ].join('');
+
+  // Weeks (newest first)
+  const keys = Object.keys(DATA.weeks).sort().reverse();
+  const container = document.getElementById('weeks');
+  if (keys.length === 0) {
+    container.innerHTML = `<div class="empty-state">No weeks yet. Click <strong>+ Current week</strong> to start.</div>`;
+    return;
+  }
+
+  container.innerHTML = keys.map(key => renderWeek(key)).join('');
+}
+
+function renderWeek(key) {
+  const sun = parseDateKey(key);
+  const sat = addDays(sun, 6);
+  const stats = computeWeekStats(key);
+  const displayRows = getDisplayRows(key);
+
+  const rowsHTML = displayRows.map(r => {
+    const entry = DATA.weeks[r.weekKey].entries[r.idx];
+    const rowSun = parseDateKey(r.weekKey);
+    const nightDate = addDays(rowSun, r.idx);
+    const morningDate = addDays(rowSun, r.idx + 1);
+    const cls = entry.isWeekend ? 'weekend' : '';
+    return `
+      <tr class="${cls}">
+        <td class="day-label">
+          ${DAY_PAIRS[r.idx].label}
+          <span class="date">${fmtDateShort(nightDate)} → ${fmtDateShort(morningDate)}</span>
+        </td>
+        <td>
+          <input type="time" value="${entry.bedtime}"
+            onchange="updateEntry('${r.weekKey}', ${r.idx}, 'bedtime', this.value)">
+        </td>
+        <td>
+          <input type="time" value="${entry.wakeup}"
+            onchange="updateEntry('${r.weekKey}', ${r.idx}, 'wakeup', this.value)">
+        </td>
+        <td>
+          <label class="weekend-toggle">
+            <input type="checkbox" ${entry.isWeekend ? 'checked' : ''}
+              onchange="updateEntry('${r.weekKey}', ${r.idx}, 'isWeekend', this.checked)">
+            Weekend
+          </label>
+        </td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="week">
+      <div class="week-header">
+        <div class="week-title">
+          Week of ${fmtDateLong(sun)}
+          <span class="range">${fmtDateShort(sun)} – ${fmtDateShort(sat)}</span>
+        </div>
+        <div class="week-actions">
+          <button class="danger" onclick="deleteWeek('${key}')">Delete</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Night → Morning</th>
+            <th>Bedtime</th>
+            <th>Wake-up</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
+      <div class="week-stats">
+        ${statHTML('Avg work bedtime', stats.workBed)}
+        ${statHTML('Avg work wake-up', stats.workWake)}
+        ${statHTML('Avg weekend bedtime', stats.weekendBed)}
+        ${statHTML('Avg weekend wake-up', stats.weekendWake)}
+      </div>
+    </div>`;
+}
+
+function updateEntry(key, idx, field, value) {
+  const week = DATA.weeks[key];
+  if (!week) return;
+  week.entries[idx][field] = value;
+  saveData(DATA);
+  // Re-render to update stats and weekend styling
+  render();
+}
+
+// ---------- Import / export ----------
+function exportData() {
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sleep-tracker-${fmtDateKey(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importData() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!imported.weeks) throw new Error('Missing weeks');
+        if (!confirm('Replace all current data with imported data?')) return;
+        DATA = imported;
+        window.DATA = DATA;
+        saveData(DATA);
+        render();
+      } catch (err) {
+        alert('Import failed: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ---------- Init ----------
+// Auto-create the current week on first visit so there's something to fill in.
+if (Object.keys(DATA.weeks).length === 0) {
+  const sun = getSundayOf(new Date());
+  ensureWeek(fmtDateKey(sun));
+}
+render();
+</script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider,
+  signInWithPopup, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {
+  initializeFirestore,
+  persistentLocalCache, persistentMultipleTabManager,
+  doc, getDoc, setDoc, onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC7pGvbpPFUmm3akofVTIshGvcj5cWHtYs",
+  authDomain: "sleep-tracker-9ba87.firebaseapp.com",
+  projectId: "sleep-tracker-9ba87",
+  storageBucket: "sleep-tracker-9ba87.firebasestorage.app",
+  messagingSenderId: "960445756820",
+  appId: "1:960445756820:web:eae60d124ed584df898b81"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+const provider = new GoogleAuthProvider();
+
+let currentUser = null;
+let unsubSnapshot = null;
+let saveTimer = null;
+let suppressNextRemote = false; // ignore the snapshot triggered by our own write
+
+const statusEl = document.getElementById('authStatus');
+const btnEl = document.getElementById('authBtn');
+
+function setStatus(text, mode) {
+  statusEl.className = 'auth-status' + (mode ? ' ' + mode : '');
+  statusEl.innerHTML = `<span class="dot"></span>${text}`;
+}
+
+btnEl.addEventListener('click', async () => {
+  if (currentUser) {
+    await signOut(auth);
+  } else {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      console.error(e);
+      alert('Sign-in failed: ' + e.message);
+    }
+  }
+});
+
+function userDocRef(uid) {
+  return doc(db, 'users', uid, 'data', 'sleep');
+}
+
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+  if (unsubSnapshot) { unsubSnapshot(); unsubSnapshot = null; }
+
+  if (!user) {
+    setStatus('Local only — not synced');
+    btnEl.textContent = 'Sign in with Google';
+    return;
+  }
+
+  setStatus(`Connecting as ${user.email}…`);
+  btnEl.textContent = 'Sign out';
+
+  const ref = userDocRef(user.uid);
+  try {
+    const snap = await getDoc(ref);
+    const localHasData = window.DATA && Object.keys(window.DATA.weeks || {}).length > 0;
+
+    if (snap.exists() && snap.data().weeks && Object.keys(snap.data().weeks).length > 0) {
+      // Remote has data — adopt it as source of truth.
+      window.applyRemoteData(snap.data());
+    } else if (localHasData) {
+      // Remote empty, local has data — push local up.
+      suppressNextRemote = true;
+      await setDoc(ref, window.DATA);
+    } else {
+      // Both empty — initialise an empty doc.
+      suppressNextRemote = true;
+      await setDoc(ref, { weeks: {} });
+    }
+
+    setStatus(`Synced as ${user.email}`, 'synced');
+
+    // Subscribe to live updates from other devices.
+    unsubSnapshot = onSnapshot(ref, (s) => {
+      if (suppressNextRemote) { suppressNextRemote = false; return; }
+      if (s.exists()) window.applyRemoteData(s.data());
+    }, (err) => {
+      console.error('snapshot error', err);
+      setStatus(`Offline — using local data`, 'offline');
+    });
+  } catch (e) {
+    console.error(e);
+    setStatus(`Offline — using local data`, 'offline');
+  }
+});
+
+// Called by saveData() in the main script. Debounced to coalesce rapid edits.
+window.cloudPush = function() {
+  if (!currentUser) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      suppressNextRemote = true;
+      await setDoc(userDocRef(currentUser.uid), window.DATA);
+    } catch (e) {
+      console.error('cloud push failed', e);
+      suppressNextRemote = false;
+      setStatus(`Offline — changes will sync later`, 'offline');
+    }
+  }, 400);
+};
+</script>
+</body>
+</html>
