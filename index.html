@@ -255,18 +255,15 @@
       padding: 6px 6px;
       font-size: 15px; /* >=16 avoids iOS zoom; 15 is OK for time wheel */
     }
-    .weekend-toggle { font-size: 12px; gap: 4px; }
-    .weekend-toggle::before { content: ""; } /* spacer for narrow screens */
+    /* Hide the "Weekend" word on mobile — the blue background of weekend
+       rows is the visual cue; the checkbox is enough on a narrow screen. */
+    .weekend-toggle { font-size: 0; gap: 0; }
+    .weekend-toggle input { width: 18px; height: 18px; }
     .week-stats { padding: 12px 14px; gap: 8px; }
     .week-stats .stat, .cumulative .stat { padding: 10px 12px; }
     .stat-value { font-size: 17px; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .week-stats { grid-template-columns: repeat(2, 1fr); }
-  }
-  @media (max-width: 380px) {
-    /* Hide the "Weekend" word, keep just the checkbox to save space */
-    .weekend-toggle { font-size: 0; }
-    .weekend-toggle input { width: 18px; height: 18px; }
   }
 </style>
 </head>
