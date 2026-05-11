@@ -246,6 +246,71 @@
   .auth-status.synced .dot { background: var(--accent); }
   .auth-status.offline .dot { background: #ffae42; }
 
+  /* ---------- Goals ---------- */
+  .goal-badge {
+    margin-left: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    vertical-align: middle;
+  }
+  .goal-badge.met { color: var(--accent); }
+  .goal-badge.missed { color: var(--danger); }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 16px;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    max-width: 540px;
+    width: 100%;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+  .modal h2 { margin: 0 0 6px; font-size: 18px; }
+  .modal-help { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  .goal-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .goal-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border-radius: 8px;
+  }
+  .goal-row.disabled .goal-direction,
+  .goal-row.disabled .goal-time { opacity: 0.45; pointer-events: none; }
+  .goal-enabled { accent-color: var(--accent-2); width: 18px; height: 18px; cursor: pointer; }
+  .goal-label { flex: 1; min-width: 110px; font-size: 14px; font-weight: 500; }
+  .goal-direction {
+    background: #0d0d0d;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 5px 6px;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 13px;
+    color-scheme: dark;
+  }
+  .goal-time { width: 110px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
   /* ---------- Mobile-friendly tweaks ---------- */
   @media (max-width: 600px) {
     body { padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
@@ -288,6 +353,7 @@
     <button class="primary" onclick="addCurrentWeek()">+ Current week</button>
     <button onclick="addPreviousWeek()">+ Previous week</button>
     <button onclick="addNextWeek()">+ Next week</button>
+    <button onclick="openGoals()">Goals</button>
     <button onclick="exportData()">Export</button>
     <button onclick="importData()">Import</button>
   </div>
@@ -301,6 +367,21 @@
 
   <div class="footer-actions">
     <button onclick="addPreviousWeek()">+ Add previous week</button>
+  </div>
+</div>
+
+<div id="goalsModal" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-label="Sleep goals">
+    <h2>Sleep goals</h2>
+    <p class="modal-help">
+      Set targets for your weekly averages. A ✓ or ✗ will appear next to the
+      stat for each enabled goal that has data to evaluate.
+    </p>
+    <div id="goalGrid" class="goal-grid"></div>
+    <div class="modal-actions">
+      <button onclick="closeGoals()">Cancel</button>
+      <button class="primary" onclick="saveGoalsFromForm()">Save</button>
+    </div>
   </div>
 </div>
 
@@ -333,7 +414,9 @@ function migrateEntry(e) {
   };
 }
 function migrateData(data) {
-  if (!data || !data.weeks) return;
+  if (!data) return;
+  if (!data.weeks) data.weeks = {};
+  if (!data.goals) data.goals = {};
   Object.values(data.weeks).forEach(w => {
     if (Array.isArray(w.entries)) w.entries = w.entries.map(migrateEntry);
   });
@@ -560,11 +643,34 @@ function computeCumulativeStats() {
   return statsForEntries(all);
 }
 
+// ---------- Goals ----------
+// Returns 'met', 'missed', or null (no goal set, disabled, or no data).
+function evaluateGoal(category, metric, valueStr) {
+  if (!valueStr) return null;
+  const goals = DATA.goals || {};
+  const g = goals[category] && goals[category][metric];
+  if (!g || !g.enabled || !g.time) return null;
+  const toMin = (metric === 'bedtime') ? bedtimeToMinutes : wakeupToMinutes;
+  const v = toMin(valueStr);
+  const target = toMin(g.time);
+  if (v == null || target == null) return null;
+  const dir = g.direction || 'before';
+  const ok = dir === 'before' ? v <= target : v >= target;
+  return ok ? 'met' : 'missed';
+}
+
+function goalBadgeHTML(status) {
+  if (!status) return '';
+  const sym = status === 'met' ? '✓' : '✗';
+  return `<span class="goal-badge ${status}" title="Goal ${status}">${sym}</span>`;
+}
+
 // ---------- Rendering ----------
-function statHTML(label, value) {
+function statHTML(label, value, status) {
   const v = value || '—';
   const cls = value ? 'stat-value' : 'stat-value empty';
-  return `<div class="stat"><div class="stat-label">${label}</div><div class="${cls}">${v}</div></div>`;
+  const badge = goalBadgeHTML(status);
+  return `<div class="stat"><div class="stat-label">${label}</div><div class="${cls}">${v}${badge}</div></div>`;
 }
 
 function render() {
@@ -652,17 +758,19 @@ function renderWeek(key) {
 }
 
 function statsPanelHTML(stats) {
+  const s = (label, val, cat, metric) =>
+    statHTML(label, val, evaluateGoal(cat, metric, val));
   const parts = [
-    statHTML('Avg work bedtime', stats.workBed),
-    statHTML('Avg work wake-up', stats.workWake),
-    statHTML('Avg weekend bedtime', stats.weekendBed),
-    statHTML('Avg weekend wake-up', stats.weekendWake),
+    s('Avg work bedtime',    stats.workBed,    'work',    'bedtime'),
+    s('Avg work wake-up',    stats.workWake,   'work',    'wakeup'),
+    s('Avg weekend bedtime', stats.weekendBed, 'weekend', 'bedtime'),
+    s('Avg weekend wake-up', stats.weekendWake,'weekend', 'wakeup'),
   ];
   // Only surface off-day stats when there's at least one off-day entry with data
   // — keeps the panel uncluttered for normal weeks.
   if (stats.hasOffday) {
-    parts.push(statHTML('Avg off-day bedtime', stats.offdayBed));
-    parts.push(statHTML('Avg off-day wake-up', stats.offdayWake));
+    parts.push(s('Avg off-day bedtime', stats.offdayBed,  'offday', 'bedtime'));
+    parts.push(s('Avg off-day wake-up', stats.offdayWake, 'offday', 'wakeup'));
   }
   return parts.join('');
 }
@@ -729,6 +837,67 @@ function importData() {
   };
   input.click();
 }
+
+// ---------- Goals modal ----------
+const GOAL_DEFS = [
+  { cat: 'work',    metric: 'bedtime', label: 'Work bedtime',    defaultDir: 'before', defaultTime: '23:30' },
+  { cat: 'work',    metric: 'wakeup',  label: 'Work wake-up',    defaultDir: 'before', defaultTime: '07:00' },
+  { cat: 'weekend', metric: 'bedtime', label: 'Weekend bedtime', defaultDir: 'before', defaultTime: '00:30' },
+  { cat: 'weekend', metric: 'wakeup',  label: 'Weekend wake-up', defaultDir: 'before', defaultTime: '09:00' },
+  { cat: 'offday',  metric: 'bedtime', label: 'Off-day bedtime', defaultDir: 'before', defaultTime: '23:30' },
+  { cat: 'offday',  metric: 'wakeup',  label: 'Off-day wake-up', defaultDir: 'before', defaultTime: '08:00' },
+];
+
+function openGoals() {
+  const goals = DATA.goals || {};
+  const grid = document.getElementById('goalGrid');
+  grid.innerHTML = GOAL_DEFS.map(def => {
+    const existing = (goals[def.cat] && goals[def.cat][def.metric]) || {};
+    const enabled = !!existing.enabled;
+    const dir = existing.direction || def.defaultDir;
+    const time = existing.time || def.defaultTime;
+    const dirOpt = (val, label) =>
+      `<option value="${val}" ${dir === val ? 'selected' : ''}>${label}</option>`;
+    return `
+      <div class="goal-row ${enabled ? '' : 'disabled'}" data-cat="${def.cat}" data-metric="${def.metric}">
+        <input type="checkbox" class="goal-enabled" ${enabled ? 'checked' : ''}
+          onchange="this.closest('.goal-row').classList.toggle('disabled', !this.checked)">
+        <span class="goal-label">${def.label}</span>
+        <select class="goal-direction">
+          ${dirOpt('before', 'no later than')}
+          ${dirOpt('after', 'no earlier than')}
+        </select>
+        <input type="time" class="goal-time" value="${time}">
+      </div>`;
+  }).join('');
+  document.getElementById('goalsModal').hidden = false;
+}
+
+function closeGoals() {
+  document.getElementById('goalsModal').hidden = true;
+}
+
+function saveGoalsFromForm() {
+  const newGoals = {};
+  document.querySelectorAll('#goalGrid .goal-row').forEach(row => {
+    const cat = row.getAttribute('data-cat');
+    const metric = row.getAttribute('data-metric');
+    const enabled = row.querySelector('.goal-enabled').checked;
+    const direction = row.querySelector('.goal-direction').value;
+    const time = row.querySelector('.goal-time').value;
+    if (!newGoals[cat]) newGoals[cat] = {};
+    newGoals[cat][metric] = { enabled, direction, time };
+  });
+  DATA.goals = newGoals;
+  saveData(DATA);
+  closeGoals();
+  render();
+}
+
+// Click outside the modal panel closes it.
+document.getElementById('goalsModal').addEventListener('click', (e) => {
+  if (e.target.id === 'goalsModal') closeGoals();
+});
 
 // ---------- Init ----------
 // Auto-create the current week on first visit so there's something to fill in.
