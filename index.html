@@ -20,6 +20,8 @@
     --panel-2: #1c1c1c;
     --weekend: #1a2340;
     --weekend-2: #233056;
+    --offday: #281a3a;
+    --offday-2: #3d2858;
     --border: #2a2a2a;
     --text: #e6e6e6;
     --muted: #8a8a8a;
@@ -158,6 +160,8 @@
   tr:last-child td { border-bottom: none; }
   tr.weekend { background: var(--weekend); }
   tr.weekend td { border-color: var(--weekend-2); }
+  tr.offday { background: var(--offday); }
+  tr.offday td { border-color: var(--offday-2); }
 
   .day-label { font-weight: 500; min-width: 130px; }
   .day-label .date { color: var(--muted); font-weight: 400; font-size: 12px; display: block; }
@@ -175,18 +179,23 @@
     width: 110px;
   }
   tr.weekend input[type="time"] { background: #0f1530; }
+  tr.offday input[type="time"] { background: #1a1226; }
   input[type="time"]:focus { outline: none; border-color: var(--accent-2); }
 
-  .weekend-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    user-select: none;
-    color: var(--muted);
+  .cat-select {
+    background: #0d0d0d;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 5px 6px;
+    border-radius: 5px;
+    font-family: inherit;
     font-size: 13px;
+    color-scheme: dark;
+    cursor: pointer;
   }
-  .weekend-toggle input { accent-color: var(--accent-2); }
+  tr.weekend .cat-select { background: #0f1530; border-color: var(--weekend-2); }
+  tr.offday .cat-select { background: #1a1226; border-color: var(--offday-2); }
+  .cat-select:focus { outline: none; border-color: var(--accent-2); }
 
   .week-stats {
     padding: 14px 20px;
@@ -255,10 +264,8 @@
       padding: 6px 6px;
       font-size: 15px; /* >=16 avoids iOS zoom; 15 is OK for time wheel */
     }
-    /* Hide the "Weekend" word on mobile — the blue background of weekend
-       rows is the visual cue; the checkbox is enough on a narrow screen. */
-    .weekend-toggle { font-size: 0; gap: 0; }
-    .weekend-toggle input { width: 18px; height: 18px; }
+    /* Compact category dropdown on mobile */
+    .cat-select { padding: 4px 2px; font-size: 12px; }
     .week-stats { padding: 12px 14px; gap: 8px; }
     .week-stats .stat, .cumulative .stat { padding: 10px 12px; }
     .stat-value { font-size: 17px; }
@@ -311,15 +318,37 @@ const DAY_PAIRS = [
   { label: 'Fri → Sat' },
   { label: 'Sat → Sun' },
 ];
-const DEFAULT_WEEKEND = [false, false, false, false, false, true, true];
+// Each entry has a 3-way `category`: 'work', 'weekend', or 'offday'.
+// 'weekend' and 'offday' both stack with the previous week visually.
+const DEFAULT_CATEGORY = ['work', 'work', 'work', 'work', 'work', 'weekend', 'weekend'];
 
 // ---------- Data ----------
+// Migrate an entry from the old binary {isWeekend} format to {category}.
+function migrateEntry(e) {
+  if (e && e.category) return e;
+  return {
+    bedtime: (e && e.bedtime) || '',
+    wakeup: (e && e.wakeup) || '',
+    category: e && e.isWeekend ? 'weekend' : 'work',
+  };
+}
+function migrateData(data) {
+  if (!data || !data.weeks) return;
+  Object.values(data.weeks).forEach(w => {
+    if (Array.isArray(w.entries)) w.entries = w.entries.map(migrateEntry);
+  });
+}
+function categoryOf(e) {
+  return (e && e.category) || (e && e.isWeekend ? 'weekend' : 'work');
+}
+
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { weeks: {} };
     const data = JSON.parse(raw);
     if (!data.weeks) data.weeks = {};
+    migrateData(data);
     return data;
   } catch (e) {
     console.error('load failed', e);
@@ -337,6 +366,7 @@ window.DATA = DATA; // expose to module script
 // Called by the cloud sync layer when remote data arrives.
 window.applyRemoteData = function(remote) {
   if (!remote || !remote.weeks) return;
+  migrateData(remote);
   // Skip if identical to current state — avoids needless re-render flicker.
   if (JSON.stringify(remote) === JSON.stringify(DATA)) return;
   DATA = remote;
@@ -382,17 +412,19 @@ function ensureWeek(key) {
       entries: DAY_PAIRS.map((_, i) => ({
         bedtime: '',
         wakeup: '',
-        isWeekend: DEFAULT_WEEKEND[i],
+        category: DEFAULT_CATEGORY[i],
       })),
     };
     saveData(DATA);
   }
-  // Backfill missing fields
+  // Backfill missing fields / migrate old format
   const w = DATA.weeks[key];
-  if (!w.entries || w.entries.length !== 7) {
+  if (!Array.isArray(w.entries) || w.entries.length !== 7) {
     w.entries = DAY_PAIRS.map((_, i) => ({
-      bedtime: '', wakeup: '', isWeekend: DEFAULT_WEEKEND[i]
+      bedtime: '', wakeup: '', category: DEFAULT_CATEGORY[i]
     }));
+  } else {
+    w.entries = w.entries.map(migrateEntry);
   }
   return w;
 }
@@ -485,48 +517,47 @@ function getDisplayRows(key) {
   const prevExists = !!DATA.weeks[prevKey];
   const nextWeek = DATA.weeks[nextKey];
 
+  const isNonWork = (e) => categoryOf(e) !== 'work';
   const rows = [];
   // Top: own entries[0] unless it's been "donated" to the previous week.
   // (If no previous week exists yet, keep it here so data isn't hidden.)
-  if (!week.entries[0].isWeekend || !prevExists) {
+  if (!isNonWork(week.entries[0]) || !prevExists) {
     rows.push({ weekKey: key, idx: 0 });
   }
   // Middle: entries[1..6] always belong here.
   for (let i = 1; i <= 6; i++) rows.push({ weekKey: key, idx: i });
-  // Bottom: next week's entries[0] if marked weekend → it joins this weekend.
-  if (nextWeek && nextWeek.entries[0].isWeekend) {
+  // Bottom: next week's entries[0] if non-work → joins this weekend group.
+  if (nextWeek && isNonWork(nextWeek.entries[0])) {
     rows.push({ weekKey: nextKey, idx: 0 });
   }
   return rows;
 }
 
-function computeWeekStats(key) {
-  const rows = getDisplayRows(key);
-  const entries = rows.map(r => DATA.weeks[r.weekKey].entries[r.idx]);
-  const work = entries.filter(e => !e.isWeekend);
-  const wknd = entries.filter(e => e.isWeekend);
+function statsForEntries(entries) {
+  const work = entries.filter(e => categoryOf(e) === 'work');
+  const wknd = entries.filter(e => categoryOf(e) === 'weekend');
+  const off  = entries.filter(e => categoryOf(e) === 'offday');
   return {
     workBed: avgBedtime(work.map(e => e.bedtime)),
     workWake: avgWakeup(work.map(e => e.wakeup)),
     weekendBed: avgBedtime(wknd.map(e => e.bedtime)),
     weekendWake: avgWakeup(wknd.map(e => e.wakeup)),
+    offdayBed: avgBedtime(off.map(e => e.bedtime)),
+    offdayWake: avgWakeup(off.map(e => e.wakeup)),
+    hasOffday: off.some(e => e.bedtime || e.wakeup),
   };
 }
 
+function computeWeekStats(key) {
+  const rows = getDisplayRows(key);
+  const entries = rows.map(r => DATA.weeks[r.weekKey].entries[r.idx]);
+  return statsForEntries(entries);
+}
+
 function computeCumulativeStats() {
-  const allWork = [];
-  const allWknd = [];
-  Object.values(DATA.weeks).forEach(w => {
-    w.entries.forEach(e => {
-      (e.isWeekend ? allWknd : allWork).push(e);
-    });
-  });
-  return {
-    workBed: avgBedtime(allWork.map(e => e.bedtime)),
-    workWake: avgWakeup(allWork.map(e => e.wakeup)),
-    weekendBed: avgBedtime(allWknd.map(e => e.bedtime)),
-    weekendWake: avgWakeup(allWknd.map(e => e.wakeup)),
-  };
+  const all = [];
+  Object.values(DATA.weeks).forEach(w => w.entries.forEach(e => all.push(e)));
+  return statsForEntries(all);
 }
 
 // ---------- Rendering ----------
@@ -563,7 +594,10 @@ function renderWeek(key) {
     const rowSun = parseDateKey(r.weekKey);
     const nightDate = addDays(rowSun, r.idx);
     const morningDate = addDays(rowSun, r.idx + 1);
-    const cls = entry.isWeekend ? 'weekend' : '';
+    const cat = categoryOf(entry);
+    const cls = cat === 'work' ? '' : cat; // 'weekend' or 'offday'
+    const opt = (val, label) =>
+      `<option value="${val}" ${cat === val ? 'selected' : ''}>${label}</option>`;
     return `
       <tr class="${cls}">
         <td class="day-label">
@@ -579,11 +613,12 @@ function renderWeek(key) {
             onchange="updateEntry('${r.weekKey}', ${r.idx}, 'wakeup', this.value)">
         </td>
         <td>
-          <label class="weekend-toggle">
-            <input type="checkbox" ${entry.isWeekend ? 'checked' : ''}
-              onchange="updateEntry('${r.weekKey}', ${r.idx}, 'isWeekend', this.checked)">
-            Weekend
-          </label>
+          <select class="cat-select"
+            onchange="updateEntry('${r.weekKey}', ${r.idx}, 'category', this.value)">
+            ${opt('work', 'Work')}
+            ${opt('weekend', 'Wknd')}
+            ${opt('offday', 'Off')}
+          </select>
         </td>
       </tr>`;
   }).join('');
@@ -617,12 +652,19 @@ function renderWeek(key) {
 }
 
 function statsPanelHTML(stats) {
-  return [
+  const parts = [
     statHTML('Avg work bedtime', stats.workBed),
     statHTML('Avg work wake-up', stats.workWake),
     statHTML('Avg weekend bedtime', stats.weekendBed),
     statHTML('Avg weekend wake-up', stats.weekendWake),
-  ].join('');
+  ];
+  // Only surface off-day stats when there's at least one off-day entry with data
+  // — keeps the panel uncluttered for normal weeks.
+  if (stats.hasOffday) {
+    parts.push(statHTML('Avg off-day bedtime', stats.offdayBed));
+    parts.push(statHTML('Avg off-day wake-up', stats.offdayWake));
+  }
+  return parts.join('');
 }
 
 // Refresh only the stat panels (cumulative + each week) without touching
@@ -642,7 +684,7 @@ function updateEntry(key, idx, field, value) {
   if (!week) return;
   week.entries[idx][field] = value;
   saveData(DATA);
-  if (field === 'isWeekend') {
+  if (field === 'category') {
     // Layout changes (row may move between weeks, styling shifts) → full render.
     render();
   } else {
