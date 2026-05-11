@@ -236,6 +236,38 @@
   }
   .auth-status.synced .dot { background: var(--accent); }
   .auth-status.offline .dot { background: #ffae42; }
+
+  /* ---------- Mobile-friendly tweaks ---------- */
+  @media (max-width: 600px) {
+    body { padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+    h1 { font-size: 22px; }
+    .subtitle { margin-bottom: 16px; }
+    .toolbar button { padding: 7px 10px; font-size: 13px; }
+    .cumulative { padding: 12px 14px; }
+    .week-header { padding: 12px 14px; }
+    th, td { padding: 8px 10px; font-size: 13px; }
+    th:nth-child(1) { padding-left: 14px; }
+    th:last-child, td:last-child { padding-right: 14px; }
+    .day-label { min-width: 0; font-size: 13px; }
+    .day-label .date { font-size: 11px; }
+    input[type="time"] {
+      width: 92px;
+      padding: 6px 6px;
+      font-size: 15px; /* >=16 avoids iOS zoom; 15 is OK for time wheel */
+    }
+    .weekend-toggle { font-size: 12px; gap: 4px; }
+    .weekend-toggle::before { content: ""; } /* spacer for narrow screens */
+    .week-stats { padding: 12px 14px; gap: 8px; }
+    .week-stats .stat, .cumulative .stat { padding: 10px 12px; }
+    .stat-value { font-size: 17px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .week-stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 380px) {
+    /* Hide the "Weekend" word, keep just the checkbox to save space */
+    .weekend-toggle { font-size: 0; }
+    .weekend-toggle input { width: 18px; height: 18px; }
+  }
 </style>
 </head>
 <body>
@@ -509,13 +541,8 @@ function statHTML(label, value) {
 
 function render() {
   // Cumulative stats
-  const cum = computeCumulativeStats();
-  document.getElementById('cumulativeStats').innerHTML = [
-    statHTML('Avg work bedtime', cum.workBed),
-    statHTML('Avg work wake-up', cum.workWake),
-    statHTML('Avg weekend bedtime', cum.weekendBed),
-    statHTML('Avg weekend wake-up', cum.weekendWake),
-  ].join('');
+  document.getElementById('cumulativeStats').innerHTML =
+    statsPanelHTML(computeCumulativeStats());
 
   // Weeks (newest first)
   const keys = Object.keys(DATA.weeks).sort().reverse();
@@ -565,7 +592,7 @@ function renderWeek(key) {
   }).join('');
 
   return `
-    <div class="week">
+    <div class="week" data-week-key="${key}">
       <div class="week-header">
         <div class="week-title">
           Week of ${fmtDateLong(sun)}
@@ -586,13 +613,31 @@ function renderWeek(key) {
         </thead>
         <tbody>${rowsHTML}</tbody>
       </table>
-      <div class="week-stats">
-        ${statHTML('Avg work bedtime', stats.workBed)}
-        ${statHTML('Avg work wake-up', stats.workWake)}
-        ${statHTML('Avg weekend bedtime', stats.weekendBed)}
-        ${statHTML('Avg weekend wake-up', stats.weekendWake)}
+      <div class="week-stats" data-stats-for="${key}">
+        ${statsPanelHTML(stats)}
       </div>
     </div>`;
+}
+
+function statsPanelHTML(stats) {
+  return [
+    statHTML('Avg work bedtime', stats.workBed),
+    statHTML('Avg work wake-up', stats.workWake),
+    statHTML('Avg weekend bedtime', stats.weekendBed),
+    statHTML('Avg weekend wake-up', stats.weekendWake),
+  ].join('');
+}
+
+// Refresh only the stat panels (cumulative + each week) without touching
+// the input rows. Used after bedtime/wake-up edits so the iOS time picker
+// isn't destroyed mid-interaction.
+function refreshStats() {
+  const cum = computeCumulativeStats();
+  document.getElementById('cumulativeStats').innerHTML = statsPanelHTML(cum);
+  document.querySelectorAll('[data-stats-for]').forEach(el => {
+    const k = el.getAttribute('data-stats-for');
+    if (DATA.weeks[k]) el.innerHTML = statsPanelHTML(computeWeekStats(k));
+  });
 }
 
 function updateEntry(key, idx, field, value) {
@@ -600,8 +645,14 @@ function updateEntry(key, idx, field, value) {
   if (!week) return;
   week.entries[idx][field] = value;
   saveData(DATA);
-  // Re-render to update stats and weekend styling
-  render();
+  if (field === 'isWeekend') {
+    // Layout changes (row may move between weeks, styling shifts) → full render.
+    render();
+  } else {
+    // Bedtime / wake-up: only stat numbers change. Don't rebuild the inputs,
+    // or iOS Safari's time wheel will close mid-edit.
+    refreshStats();
+  }
 }
 
 // ---------- Import / export ----------
